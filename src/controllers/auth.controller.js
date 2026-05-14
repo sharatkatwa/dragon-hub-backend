@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
 const ApiError = require("../utils/apiError");
 const asyncHandler = require("../utils/asyncHandler");
+const imagekit = require("../config/imagekit");
 
 const cookieOptions = {
   httpOnly: true,
@@ -10,7 +11,8 @@ const cookieOptions = {
 };
 
 const generateAccessToken = (userId) => {
-  const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET;
+  const accessTokenSecret =
+    process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET;
 
   if (!accessTokenSecret) {
     throw new ApiError(500, "ACCESS_TOKEN_SECRET is not defined");
@@ -91,7 +93,7 @@ const register = asyncHandler(async (req, res) => {
     fullName,
   });
 
-// again fetched the user because I need to minus(-) the password from the user
+  // again fetched the user because I need to minus(-) the password from the user
   const createdUser = await User.findById(user._id);
 
   await sendAuthResponse(res, 201, createdUser, "User registered successfully");
@@ -138,7 +140,8 @@ const logout = asyncHandler(async (req, res) => {
 });
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-  const incomingRefreshToken = req.cookies?.refreshToken || req.body.refreshToken;
+  const incomingRefreshToken =
+    req.cookies?.refreshToken || req.body.refreshToken;
 
   if (!incomingRefreshToken) {
     throw new ApiError(401, "Refresh token is required");
@@ -173,8 +176,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: "Access token refreshed successfully",
-    accessToken,
-    refreshToken,
+    // accessToken,
+    // refreshToken,
     user: refreshedUser,
   });
 });
@@ -186,10 +189,94 @@ const getCurrentUser = asyncHandler(async (req, res) => {
   });
 });
 
+const updateProfile = asyncHandler(async (req, res) => {
+  const { fullName, bio, skills, socialLinks } = req.body;
+  const updateData = {};
+
+  if (fullName !== undefined) {
+    updateData.fullName = fullName;
+  }
+
+  if (bio !== undefined) {
+    updateData.bio = bio;
+  }
+
+  if (skills !== undefined) {
+    updateData.skills = Array.isArray(skills)
+      ? skills
+      : skills.split(",").map((skill) => skill.trim()).filter(Boolean);
+  }
+
+  if (socialLinks !== undefined) {
+    updateData.socialLinks =
+      typeof socialLinks === "string" ? JSON.parse(socialLinks) : socialLinks;
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    throw new ApiError(400, "No profile fields provided");
+  }
+
+  const user = await User.findByIdAndUpdate(req.user._id, updateData, {
+    new: true,
+    runValidators: true,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Profile updated successfully",
+    user,
+  });
+});
+
+const updateProfileImages = asyncHandler(async (req, res) => {
+  const updateData = {};
+
+  if (req.files?.avatar?.[0]) {
+    const avatarFile = req.files.avatar[0];
+
+    const uploadedAvatar = await imagekit.upload({
+      file: avatarFile.buffer,
+      fileName: `avatar-${req.user._id}-${Date.now()}`,
+      folder: "/devhub/avatars",
+    });
+
+    updateData.avatar = uploadedAvatar.url;
+  }
+
+  if (req.files?.banner?.[0]) {
+    const bannerFile = req.files.banner[0];
+
+    const uploadedBanner = await imagekit.upload({
+      file: bannerFile.buffer,
+      fileName: `banner-${req.user._id}-${Date.now()}`,
+      folder: "/devhub/banners",
+    });
+
+    updateData.banner = uploadedBanner.url;
+  }
+
+  // if (!updateData.avatar && !updateData.banner) {
+  //   throw new ApiError(400, "Avatar or banner image is required");
+  // }
+
+  const user = await User.findByIdAndUpdate(req.user._id, updateData, {
+    new: true,
+    runValidators: true,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Profile images updated successfully",
+    user,
+  });
+});
+
 module.exports = {
   register,
   login,
   logout,
   refreshAccessToken,
   getCurrentUser,
+  updateProfile,
+  updateProfileImages,
 };
