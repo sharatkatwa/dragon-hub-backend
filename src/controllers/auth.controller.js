@@ -73,6 +73,7 @@ const sendAuthResponse = async (res, statusCode, user, message) => {
 
 const register = asyncHandler(async (req, res) => {
   const { username, email, password, fullName } = req.body;
+  console.log(req.body);
 
   if (!username || !email || !password) {
     throw new ApiError(400, "Username, email, and password are required");
