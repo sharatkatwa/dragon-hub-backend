@@ -59,14 +59,42 @@ const createProject = asyncHandler(async (req, res) => {
 });
 
 const getProjects = asyncHandler(async (req, res) => {
-  const projects = await Project.find()
+  const { search, tech, tag, sort = "latest" } = req.query;
+  const query = {};
+  let sortOptions = { createdAt: -1 };
+
+  if (search) {
+    query.$or = [
+      { title: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  if (tech) {
+    query.techStack = { $in: parseArrayField(tech) };
+  }
+
+  if (tag) {
+    query.tags = { $in: parseArrayField(tag) };
+  }
+
+  if (sort === "oldest") {
+    sortOptions = { createdAt: 1 };
+  }
+
+  const projects = await Project.find(query)
     .populate("owner", "username fullName avatar")
-    .sort({ createdAt: -1 });
+    .sort(sortOptions);
+
+  const sortedProjects =
+    sort === "popular"
+      ? projects.sort((a, b) => b.likes.length - a.likes.length)
+      : projects;
 
   res.status(200).json({
     success: true,
-    count: projects.length,
-    projects,
+    count: sortedProjects.length,
+    projects: sortedProjects,
   });
 });
 
@@ -163,6 +191,32 @@ const deleteProject = asyncHandler(async (req, res) => {
   });
 });
 
+const toggleProjectLike = asyncHandler(async (req, res) => {
+  const project = await Project.findById(req.params.id);
+
+  if (!project) {
+    throw new ApiError(404, "Project not found");
+  }
+
+  const userId = req.user._id.toString();
+  const isLiked = project.likes.some((like) => like.toString() === userId);
+
+  if (isLiked) {
+    project.likes = project.likes.filter((like) => like.toString() !== userId);
+  } else {
+    project.likes.push(req.user._id);
+  }
+
+  await project.save();
+
+  res.status(200).json({
+    success: true,
+    message: isLiked ? "Project unliked successfully" : "Project liked successfully",
+    liked: !isLiked,
+    likesCount: project.likes.length,
+  });
+});
+
 module.exports = {
   createProject,
   getProjects,
@@ -170,4 +224,5 @@ module.exports = {
   getUserProjects,
   updateProject,
   deleteProject,
+  toggleProjectLike,
 };
